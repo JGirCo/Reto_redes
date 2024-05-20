@@ -34,15 +34,15 @@ void receiveEvent(int howMany) {
     byte command = Wire.read(); // Recibe byte como comando
     switch (command) {
       case 0x01: // LAT_ADDRESS
-        responseFunction = sendLat;
+        responseFunction = sendLon;
         break;
       case 0x02: // LON_ADDRESS
-        responseFunction = sendLon;
+        responseFunction = sendLat;
         break;
       case 0x03: // ALT_ADDRESS
         responseFunction = sendAlt;
         break;
-      case 0x04: // OBJ_LAT_ADDRESS
+      case 0x04: // OBJ_LON_ADDRESS
         responseFunction = sendObjLat;
         break;
       default:

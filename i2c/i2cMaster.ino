@@ -1,10 +1,10 @@
 #include <Wire.h>
 
 #define SLAVE_ADDRESS 0x80
-#define LAT_ADDRESS 0X01
-#define LON_ADDRESS 0X02
+#define LON_ADDRESS 0X01
+#define LAT_ADDRESS 0X02
 #define ALT_ADDRESS 0X03
-#define OBJ_LAT_ADDRESS 0X04
+#define OBJ_LON_ADDRESS 0X04
 
 #define I2C_SDA 26
 #define I2C_SCL 27
@@ -34,7 +34,7 @@ void loop() {
     Serial.println(altitud, 4);
 
     Serial.print("Latitud Objetivo = ");
-    latitudObjetivo = i2cRead(OBJ_LAT_ADDRESS);
+    latitudObjetivo = i2cRead(OBJ_LON_ADDRESS);
     Serial.println(latitudObjetivo, 4);
 
     delay(1000);
