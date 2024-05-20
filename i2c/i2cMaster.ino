@@ -13,7 +13,6 @@ float latitud, longitud, altitud, latitudObjetivo;
 
 void setup() {
   Serial.begin(115200); // Inicia la comunicación serial
-  Serial.println(sizeof(float));
   while (!Serial) {
     ;  // wait for serial port to connect. Needed for native USB port only
   }
