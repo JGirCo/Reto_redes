@@ -27,7 +27,6 @@ const double DegToRad = 0.017453292519943295;
 #define PROTOCOL_I2C 1
 #define PROTOCOL_BLUETOOTH 2
 #define PROTOCOL_TCP 3
-
 // Pines
 #define BUTTON_PIN 15
 #define BUTTON_PIN2 18
@@ -280,17 +279,17 @@ void handleBluetooth() {
     Serial.print("Characteristic 1 (readValue): ");
     Serial.println(rxValue.c_str());
 
-    rxValue = pRemoteChar_2->readValue();
+    std::string ryValue = pRemoteChar_2->readValue();
     Serial.print("Characteristic 2 (readValue): ");
-    Serial.println(rxValue.c_str());
+    Serial.println(ryValue.c_str());
 
-    rxValue = pRemoteChar_3->readValue();
+    std::string rzValue = pRemoteChar_3->readValue();
     Serial.print("Characteristic 3 (readValue): ");
-    Serial.println(rxValue.c_str());
+    Serial.println(rzValue.c_str());
 
     latitud = atof(rxValue.c_str());
-    altitud = atof(rxValue.c_str());
-    longitud = atof(rxValue.c_str());
+    altitud = atof(ryValue.c_str());
+    longitud = atof(rzValue.c_str());
 
     latitud_destino[2] = latitud;
     longitud_destino[2] = longitud;
