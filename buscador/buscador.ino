@@ -25,8 +25,8 @@ const double DegToRad = 0.017453292519943295;
 
 // Definir los protocolos
 #define PROTOCOL_I2C 1
-#define PROTOCOL_BLUETOOTH 2
-#define PROTOCOL_TCP 3
+#define PROTOCOL_BLUETOOTH 3
+#define PROTOCOL_TCP 2
 // Pines
 #define BUTTON_PIN 15
 #define BUTTON_PIN2 18
@@ -70,6 +70,7 @@ BLERemoteCharacteristic* pRemoteChar_3;
 // Variables TCP
 WiFiClient client;
 bool wifiConnected = false;
+bool bluetoothConnected = false;
 const char* ssid = "ESP32-AccessPoint";
 const char* password = "12345678";
 const char* serverIP = "192.168.4.1";  // Dirección IP del ESP32 AP
@@ -173,13 +174,6 @@ void setup() {
   Serial.println("Starting Arduino Multi-Protocol application...");
   Wire.begin();
 
-  BLEDevice::init("");
-  BLEScan* pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setInterval(1349);
-  pBLEScan->setWindow(449);
-  pBLEScan->setActiveScan(true);
-  pBLEScan->start(5, false);
 }
 
 int ObjetivoSeleccionado = 0;
@@ -187,7 +181,7 @@ int ObjetivoSeleccionado = 0;
 void loop() {
   handleButtonPress();
   handleWiFiConnection();
-
+  handleBluetoothConnection();
   switch (protocoloSeleccionado) {
     case PROTOCOL_I2C:
       handleI2C();
@@ -241,13 +235,38 @@ void handleWiFiConnection() {
     while (WiFi.status() != WL_CONNECTED) {
       delay(150);
       Serial.print(".");
+      wifiConnected = true;
       if (digitalRead(BUTTON_PIN) == HIGH || digitalRead(BUTTON_PIN2) == HIGH) {
+        handleButtonPress();
+        wifiConnected = false;
+        Serial.println("Interruption");
         break;
       }
     }
-    Serial.println("");
-    Serial.println("WiFi conectado");
-    wifiConnected = true;
+    if (wifiConnected) {
+      Serial.println("");
+      Serial.println("WiFi conectado");
+    }
+  }
+}
+
+void handleBluetoothConnection() {
+  if (protocoloSeleccionado == PROTOCOL_BLUETOOTH && !bluetoothConnected) {
+    Serial.println("Attempting Bluetooth connection");
+    BLEDevice::init("");
+    BLEScan* pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setInterval(1349);
+    pBLEScan->setWindow(449);
+    pBLEScan->setActiveScan(true);
+    pBLEScan->start(, false);
+    bluetoothConnected = true;
+    if (digitalRead(BUTTON_PIN) == HIGH || digitalRead(BUTTON_PIN2) == HIGH) {
+        handleButtonPress();
+        bluetoothConnected = false;
+        pBLEScan->stop();
+        Serial.println("Interruption");
+    }
   }
 }
 
