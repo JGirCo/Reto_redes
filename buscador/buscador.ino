@@ -9,9 +9,8 @@
 #define RXD2 16
 #define TXD2 17
 HardwareSerial neogps(1);
-
-double latitud_destino[] = {6.1596632, 6.157591, 0.0, 0.0};
-double longitud_destino[] = {-75.5156536, -75.516342, 0.0, 0.0};
+double latitud_destino[] = { 6.158494, 0.0, 0.0, 0.0 };
+double longitud_destino[] = { -75.516716, 0.0, 0.0, 0.0 };
 
 double lat = 0;
 double lon = 0;
@@ -165,15 +164,14 @@ void escribirMenu(double lantitud_act, double longuitud_act,
                   double totalDistance, int modo, int Sat, int modo2);
 
 void setup() {
-  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
-  pinMode(BUTTON_PIN2, INPUT_PULLDOWN);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_PIN2, INPUT_PULLUP);
   Serial.begin(115200);
   neogps.begin(9600, SERIAL_8N1, RXD2, TXD2);
   lcdInit();
 
   Serial.println("Starting Arduino Multi-Protocol application...");
   Wire.begin();
-
 }
 
 int ObjetivoSeleccionado = 0;
@@ -205,7 +203,7 @@ void handleButtonPress() {
   int reading = digitalRead(BUTTON_PIN);
   int reading2 = digitalRead(BUTTON_PIN2);
 
-  if (reading == HIGH && !buttonPressed && (millis() - lastDebounceTime) > debounceDelay) {
+  if (reading == LOW && !buttonPressed && (millis() - lastDebounceTime) > debounceDelay) {
     buttonPressed = true;
     lastDebounceTime = millis();
     protocoloSeleccionado = (protocoloSeleccionado + 1) % 4;
@@ -215,7 +213,7 @@ void handleButtonPress() {
     buttonPressed = false;
   }
 
-  if (reading2 == HIGH && !buttonPressed2 && (millis() - lastDebounceTime2) > debounceDelay) {
+  if (reading2 == LOW && !buttonPressed2 && (millis() - lastDebounceTime2) > debounceDelay) {
     buttonPressed2 = true;
     ObjetivoSeleccionado = (ObjetivoSeleccionado + 1) % 4;
     Serial.print("Objetivo seleccionado: ");
@@ -259,28 +257,27 @@ void handleBluetoothConnection() {
     pBLEScan->setInterval(1349);
     pBLEScan->setWindow(449);
     pBLEScan->setActiveScan(true);
-    pBLEScan->start(, false);
+    pBLEScan->start(0, false);
     bluetoothConnected = true;
     if (digitalRead(BUTTON_PIN) == HIGH || digitalRead(BUTTON_PIN2) == HIGH) {
-        handleButtonPress();
-        bluetoothConnected = false;
-        pBLEScan->stop();
-        Serial.println("Interruption");
+      handleButtonPress();
+      bluetoothConnected = false;
+      pBLEScan->stop();
+      Serial.println("Interruption");
     }
   }
 }
 
 void handleI2C() {
-  latitud = i2cRead(0x02);
+  latitud = i2cRead(0x01);
+  longitud = i2cRead(0x02);
+  latitud = i2cRead(0x03);
   latitud_destino[1] = latitud;
-
-  longitud = i2cRead(0x01);
+  // altitud = i2cRead(0x03);
   longitud_destino[1] = longitud;
-
-  altitud = i2cRead(0x03);
-
-  latitudObjetivo = i2cRead(0x04);
-  longitud_destino[3] = latitudObjetivo;
+  // latitudObjetivo = i2cRead(0x04);
+  // longitud_destino[3] = latitudObjetivo;
+  Serial.println("lat: " + String(latitud, 6) + " lon: " + String(longitud, 6));
 }
 
 void handleBluetooth() {
@@ -310,8 +307,8 @@ void handleBluetooth() {
     altitud = atof(ryValue.c_str());
     longitud = atof(rzValue.c_str());
 
-    latitud_destino[2] = latitud;
-    longitud_destino[2] = longitud;
+    latitud_destino[3] = latitud;
+    longitud_destino[3] = longitud;
   } else if (doScan) {
     BLEDevice::getScan()->start(0);
   }
@@ -364,15 +361,17 @@ void parseTCPResponse(String response) {
   latitud = strLatitud.toFloat();
   altitud = strAltitud.toFloat();
   latitudObjetivo = strLatitudFinal.toFloat();
-  latitud_destino[2] = latitud;
-  longitud_destino[2] = longitud;
+  latitud_destino[2] = longitud;
+  longitud_destino[2] = latitud;
 }
 
 float i2cRead(uint8_t address) {
   Wire.beginTransmission(0x80);
   Wire.write(address);
-  Wire.endTransmission(false);
-  Wire.requestFrom((uint8_t)0x80, (uint8_t)4, (uint8_t) true);
+  Wire.endTransmission();
+  delay(50);
+  // Wire.requestFrom((uint8_t)0x80, (uint8_t)4, (uint8_t) true);
+  Wire.requestFrom(0x80, 4);
 
   union {
     float floatValue;
@@ -405,8 +404,9 @@ void escribirMenu(double lantitud_act, double longuitud_act,
   lcdSetCursor(2, 2);
   lcdPrint("      ");
   lcdSetCursor(2, 3);
-  lcdPrint("       ");
+  lcdPrint("        ");
   lcdSetCursor(0, 2);
+
   lcdPrint("N:" + String(latDistance, 0));
   lcdSetCursor(0, 3);
   lcdPrint("O:" + String(lonDistance, 0));
