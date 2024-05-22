@@ -172,28 +172,43 @@ void setup() {
 
   Serial.println("Starting Arduino Multi-Protocol application...");
   Wire.begin();
+
+  xTaskCreatePinnedToCore(
+    i2cTask,        // Function to implement the task
+    "I2CTask",      // Name of the task
+    10000,          // Stack size in words
+    NULL,           // Task input parameter
+    1,              // Priority of the task
+    NULL,           // Task handle
+    0);             // Core where the task should run
+
+  xTaskCreatePinnedToCore(
+    bluetoothTask,  // Function to implement the task
+    "BluetoothTask",// Name of the task
+    10000,          // Stack size in words
+    NULL,           // Task input parameter
+    1,              // Priority of the task
+    NULL,           // Task handle
+    1);             // Core where the task should run
+
+  xTaskCreatePinnedToCore(
+    tcpTask,        // Function to implement the task
+    "TCPTask",      // Name of the task
+    10000,          // Stack size in words
+    NULL,           // Task input parameter
+    1,              // Priority of the task
+    NULL,           // Task handle
+    1);             // Core where the task should run
 }
 
 int ObjetivoSeleccionado = 0;
 
 void loop() {
   handleButtonPress();
-  handleWiFiConnection();
-  handleBluetoothConnection();
-  switch (protocoloSeleccionado) {
-    case PROTOCOL_I2C:
-      handleI2C();
-      break;
-    case PROTOCOL_BLUETOOTH:
-      handleBluetooth();
-      break;
-    case PROTOCOL_TCP:
-      handleTCP();
-      break;
-  }
 
   if (neogps.available()) {
     GPS();
+    Serial.print(String(lat)+" "+String(lon)+" "+String(satCuenta)+" ");
     escribirMenu(lat, lon, latitud_destino[ObjetivoSeleccionado], longitud_destino[ObjetivoSeleccionado], latDistance, lonDistance, totalDistance, protocoloSeleccionado, satCuenta, ObjetivoSeleccionado);
     calculateDistances(lat, lon, latitud_destino[ObjetivoSeleccionado], longitud_destino[ObjetivoSeleccionado], latDistance, lonDistance, totalDistance);
   }
@@ -204,17 +219,13 @@ void handleButtonPress() {
   int reading2 = digitalRead(BUTTON_PIN2);
 
   if (reading == LOW && !buttonPressed && (millis() - lastDebounceTime) > debounceDelay) {
-    buttonPressed = true;
     lastDebounceTime = millis();
     protocoloSeleccionado = (protocoloSeleccionado + 1) % 4;
     Serial.print("Protocolo seleccionado: ");
     Serial.println(protocoloSeleccionado);
-  } else if (reading == LOW) {
-    buttonPressed = false;
-  }
+  } 
 
   if (reading2 == LOW && !buttonPressed2 && (millis() - lastDebounceTime2) > debounceDelay) {
-    buttonPressed2 = true;
     ObjetivoSeleccionado = (ObjetivoSeleccionado + 1) % 4;
     Serial.print("Objetivo seleccionado: ");
     Serial.println(ObjetivoSeleccionado);
@@ -224,127 +235,114 @@ void handleButtonPress() {
   }
 }
 
-void handleWiFiConnection() {
-  if (protocoloSeleccionado == PROTOCOL_TCP && !wifiConnected) {
-    WiFi.begin(ssid, password);
-    Serial.print("Conectando a ");
-    Serial.print(ssid);
+void i2cTask(void * parameter) {
+  for (;;) {
+    if (protocoloSeleccionado == PROTOCOL_I2C) {
+      latitud = i2cRead(0x01);
+      longitud = i2cRead(0x02);
+      latitud = i2cRead(0x03);
+      latitud_destino[1] = latitud;
+      longitud_destino[1] = longitud;
+      Serial.println("I2C - lat: " + String(latitud, 6) + " lon: " + String(longitud, 6));
+    }
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
 
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(150);
-      Serial.print(".");
-      wifiConnected = true;
-      if (digitalRead(BUTTON_PIN) == HIGH || digitalRead(BUTTON_PIN2) == HIGH) {
-        handleButtonPress();
-        wifiConnected = false;
-        Serial.println("Interruption");
-        break;
+void bluetoothTask(void * parameter) {
+  for (;;) {
+    if (protocoloSeleccionado == PROTOCOL_BLUETOOTH) {
+      if (doConnect) {
+        if (connectToServer()) {
+          Serial.println("We are now connected to the BLE Server.");
+        } else {
+          Serial.println("We have failed to connect to the server.");
+        }
+        doConnect = false;
+      }
+
+      if (connected) {
+        std::string rxValue = pRemoteChar_1->readValue();
+        Serial.print("Characteristic 1 (readValue): ");
+        Serial.println(rxValue.c_str());
+
+        std::string ryValue = pRemoteChar_2->readValue();
+        Serial.print("Characteristic 2 (readValue): ");
+        Serial.println(ryValue.c_str());
+
+        std::string rzValue = pRemoteChar_3->readValue();
+        Serial.print("Characteristic 3 (readValue): ");
+        Serial.println(rzValue.c_str());
+
+        latitud = atof(rxValue.c_str());
+        altitud = atof(ryValue.c_str());
+        longitud = atof(rzValue.c_str());
+
+        latitud_destino[3] = latitud;
+        longitud_destino[3] = longitud;
+      } else if (doScan) {
+        BLEDevice::getScan()->start(0);
       }
     }
-    if (wifiConnected) {
-      Serial.println("");
-      Serial.println("WiFi conectado");
-    }
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
 
-void handleBluetoothConnection() {
-  if (protocoloSeleccionado == PROTOCOL_BLUETOOTH && !bluetoothConnected) {
-    Serial.println("Attempting Bluetooth connection");
-    BLEDevice::init("");
-    BLEScan* pBLEScan = BLEDevice::getScan();
-    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-    pBLEScan->setInterval(1349);
-    pBLEScan->setWindow(449);
-    pBLEScan->setActiveScan(true);
-    pBLEScan->start(0, false);
-    bluetoothConnected = true;
-    if (digitalRead(BUTTON_PIN) == HIGH || digitalRead(BUTTON_PIN2) == HIGH) {
-      handleButtonPress();
-      bluetoothConnected = false;
-      pBLEScan->stop();
-      Serial.println("Interruption");
-    }
-  }
-}
+void tcpTask(void * parameter) {
+  for (;;) {
+    if (protocoloSeleccionado == PROTOCOL_TCP) {
+      if (!wifiConnected) {
+        WiFi.begin(ssid, password);
+        Serial.print("Conectando a ");
+        Serial.print(ssid);
 
-void handleI2C() {
-  latitud = i2cRead(0x01);
-  longitud = i2cRead(0x02);
-  latitud = i2cRead(0x03);
-  latitud_destino[1] = latitud;
-  // altitud = i2cRead(0x03);
-  longitud_destino[1] = longitud;
-  // latitudObjetivo = i2cRead(0x04);
-  // longitud_destino[3] = latitudObjetivo;
-  Serial.println("lat: " + String(latitud, 6) + " lon: " + String(longitud, 6));
-}
-
-void handleBluetooth() {
-  if (doConnect) {
-    if (connectToServer()) {
-      Serial.println("We are now connected to the BLE Server.");
-    } else {
-      Serial.println("We have failed to connect to the server.");
-    }
-    doConnect = false;
-  }
-
-  if (connected) {
-    std::string rxValue = pRemoteChar_1->readValue();
-    Serial.print("Characteristic 1 (readValue): ");
-    Serial.println(rxValue.c_str());
-
-    std::string ryValue = pRemoteChar_2->readValue();
-    Serial.print("Characteristic 2 (readValue): ");
-    Serial.println(ryValue.c_str());
-
-    std::string rzValue = pRemoteChar_3->readValue();
-    Serial.print("Characteristic 3 (readValue): ");
-    Serial.println(rzValue.c_str());
-
-    latitud = atof(rxValue.c_str());
-    altitud = atof(ryValue.c_str());
-    longitud = atof(rzValue.c_str());
-
-    latitud_destino[3] = latitud;
-    longitud_destino[3] = longitud;
-  } else if (doScan) {
-    BLEDevice::getScan()->start(0);
-  }
-}
-
-void handleTCP() {
-  if (wifiConnected && client.connect(serverIP, 80)) {
-    Serial.println("Conectado al servidor");
-
-    client.println("GET / HTTP/1.1");
-    client.println("Host: " + String(serverIP));
-    client.println("Connection: close");
-    client.println();
-
-    bool headersEnded = false;
-    String response = "";
-    while (client.connected() || client.available()) {
-      if (client.available()) {
-        String line = client.readStringUntil('\n');
-        if (!headersEnded) {
-          if (line == "\r") {
-            headersEnded = true;
+        while (WiFi.status() != WL_CONNECTED) {
+          delay(150);
+          Serial.print(".");
+          if (digitalRead(BUTTON_PIN) == HIGH || digitalRead(BUTTON_PIN2) == HIGH) {
+            handleButtonPress();
+            Serial.println("Interruption");
+            break;
           }
-        } else {
-          response += line;
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+          wifiConnected = true;
+          Serial.println("");
+          Serial.println("WiFi conectado");
         }
       }
+
+      if (wifiConnected && client.connect(serverIP, 80)) {
+        Serial.println("Conectado al servidor");
+
+        client.println("GET / HTTP/1.1");
+        client.println("Host: " + String(serverIP));
+        client.println("Connection: close");
+        client.println();
+
+        bool headersEnded = false;
+        String response = "";
+        while (client.connected() || client.available()) {
+          if (client.available()) {
+            String line = client.readStringUntil('\n');
+            if (!headersEnded) {
+              if (line == "\r") {
+                headersEnded = true;
+              }
+            } else {
+              response += line;
+            }
+          }
+        }
+
+        parseTCPResponse(response);
+        client.stop();
+      } else if (!wifiConnected) {
+        Serial.println("Fallo al conectar al servidor: WiFi no está conectado");
+      }
     }
-
-    parseTCPResponse(response);
-
-    client.stop();
-  } else if (!wifiConnected) {
-    Serial.println("Fallo al conectar al servidor: WiFi no está conectado");
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
   }
-  delay(2000);
 }
 
 void parseTCPResponse(String response) {
@@ -370,7 +368,6 @@ float i2cRead(uint8_t address) {
   Wire.write(address);
   Wire.endTransmission();
   delay(50);
-  // Wire.requestFrom((uint8_t)0x80, (uint8_t)4, (uint8_t) true);
   Wire.requestFrom(0x80, 4);
 
   union {
