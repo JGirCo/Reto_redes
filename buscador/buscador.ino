@@ -174,31 +174,31 @@ void setup() {
   Wire.begin();
 
   xTaskCreatePinnedToCore(
-    i2cTask,        // Function to implement the task
-    "I2CTask",      // Name of the task
-    10000,          // Stack size in words
-    NULL,           // Task input parameter
-    1,              // Priority of the task
-    NULL,           // Task handle
-    0);             // Core where the task should run
+    i2cTask,    // Function to implement the task
+    "I2CTask",  // Name of the task
+    10000,      // Stack size in words
+    NULL,       // Task input parameter
+    1,          // Priority of the task
+    NULL,       // Task handle
+    0);         // Core where the task should run
 
   xTaskCreatePinnedToCore(
-    bluetoothTask,  // Function to implement the task
-    "BluetoothTask",// Name of the task
-    10000,          // Stack size in words
-    NULL,           // Task input parameter
-    1,              // Priority of the task
-    NULL,           // Task handle
-    1);             // Core where the task should run
+    bluetoothTask,    // Function to implement the task
+    "BluetoothTask",  // Name of the task
+    10000,            // Stack size in words
+    NULL,             // Task input parameter
+    1,                // Priority of the task
+    NULL,             // Task handle
+    1);               // Core where the task should run
 
   xTaskCreatePinnedToCore(
-    tcpTask,        // Function to implement the task
-    "TCPTask",      // Name of the task
-    10000,          // Stack size in words
-    NULL,           // Task input parameter
-    1,              // Priority of the task
-    NULL,           // Task handle
-    1);             // Core where the task should run
+    tcpTask,    // Function to implement the task
+    "TCPTask",  // Name of the task
+    10000,      // Stack size in words
+    NULL,       // Task input parameter
+    1,          // Priority of the task
+    NULL,       // Task handle
+    1);         // Core where the task should run
 }
 
 int ObjetivoSeleccionado = 0;
@@ -208,7 +208,7 @@ void loop() {
 
   if (neogps.available()) {
     GPS();
-    Serial.print(String(lat)+" "+String(lon)+" "+String(satCuenta)+" ");
+    Serial.println("#sat: " + String(satCuenta) + " Lati: " + String(lat) + " Long: " + String(lon));
     escribirMenu(lat, lon, latitud_destino[ObjetivoSeleccionado], longitud_destino[ObjetivoSeleccionado], latDistance, lonDistance, totalDistance, protocoloSeleccionado, satCuenta, ObjetivoSeleccionado);
     calculateDistances(lat, lon, latitud_destino[ObjetivoSeleccionado], longitud_destino[ObjetivoSeleccionado], latDistance, lonDistance, totalDistance);
   }
@@ -217,39 +217,60 @@ void loop() {
 void handleButtonPress() {
   int reading = digitalRead(BUTTON_PIN);
   int reading2 = digitalRead(BUTTON_PIN2);
+  unsigned long holdThreshold = 3000;  // Tiempo en milisegundos para considerar que el botón está mantenido presionado
 
-  if (reading == LOW && !buttonPressed && (millis() - lastDebounceTime) > debounceDelay) {
-    lastDebounceTime = millis();
-    protocoloSeleccionado = (protocoloSeleccionado + 1) % 4;
-    Serial.print("Protocolo seleccionado: ");
-    Serial.println(protocoloSeleccionado);
-  } 
+  if (reading == LOW) {
+    if (!buttonPressed) {
+      // Si el botón se acaba de presionar, registrar el tiempo
+      buttonPressed = true;
+      lastDebounceTime = millis();
+    } else {
+      // Si el botón ya estaba presionado, verificar el tiempo que ha estado presionado
+      if ((millis() - lastDebounceTime) > holdThreshold) {
+        protocoloSeleccionado = 0;
+        Serial.println("Protocolo restablecido a 0");
+      }
+    }
+  } else {
+    if (buttonPressed) {
+      // Si el botón se acaba de soltar, incrementar el protocolo si no se ha mantenido presionado demasiado tiempo
+      if ((millis() - lastDebounceTime) <= holdThreshold) {
+        protocoloSeleccionado = (protocoloSeleccionado + 1) % 4;
+        Serial.print("Protocolo seleccionado: ");
+        Serial.println(protocoloSeleccionado);
+      }
+      buttonPressed = false;
+    }
+  }
 
-  if (reading2 == LOW && !buttonPressed2 && (millis() - lastDebounceTime2) > debounceDelay) {
+  if (reading2 == LOW && (millis() - lastDebounceTime2) > debounceDelay) {
     ObjetivoSeleccionado = (ObjetivoSeleccionado + 1) % 4;
     Serial.print("Objetivo seleccionado: ");
     Serial.println(ObjetivoSeleccionado);
     lastDebounceTime2 = millis();
-  } else if (reading2 == LOW) {
-    buttonPressed2 = false;
   }
 }
 
-void i2cTask(void * parameter) {
+void i2cTask(void* parameter) {
   for (;;) {
     if (protocoloSeleccionado == PROTOCOL_I2C) {
-      latitud = i2cRead(0x01);
-      longitud = i2cRead(0x02);
-      latitud = i2cRead(0x03);
-      latitud_destino[1] = latitud;
-      longitud_destino[1] = longitud;
+      float newLat = i2cRead(0x01);
+      float newLon = i2cRead(0x02);
+      if (!isnan(newLat) && newLat != 0) {
+        latitud = newLat;
+        latitud_destino[1] = latitud;
+      }
+      if (!isnan(newLon) && newLon != 0) {
+        longitud = newLon;
+        longitud_destino[1] = longitud;
+      }
       Serial.println("I2C - lat: " + String(latitud, 6) + " lon: " + String(longitud, 6));
     }
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
 
-void bluetoothTask(void * parameter) {
+void bluetoothTask(void* parameter) {
   for (;;) {
     if (protocoloSeleccionado == PROTOCOL_BLUETOOTH) {
       if (doConnect) {
@@ -274,12 +295,20 @@ void bluetoothTask(void * parameter) {
         Serial.print("Characteristic 3 (readValue): ");
         Serial.println(rzValue.c_str());
 
-        latitud = atof(rxValue.c_str());
-        altitud = atof(ryValue.c_str());
-        longitud = atof(rzValue.c_str());
-
-        latitud_destino[3] = latitud;
-        longitud_destino[3] = longitud;
+        float newLat = atof(rxValue.c_str());
+        float newAlt = atof(ryValue.c_str());
+        float newLon = atof(rzValue.c_str());
+        if (!isnan(newLat) && newLat != 0) {
+          latitud = newLat;
+          latitud_destino[3] = latitud;
+        }
+        if (!isnan(newAlt) && newAlt != 0) {
+          altitud = newAlt;
+        }
+        if (!isnan(newLon) && newLon != 0) {
+          longitud = newLon;
+          longitud_destino[3] = longitud;
+        }
       } else if (doScan) {
         BLEDevice::getScan()->start(0);
       }
@@ -288,7 +317,7 @@ void bluetoothTask(void * parameter) {
   }
 }
 
-void tcpTask(void * parameter) {
+void tcpTask(void* parameter) {
   for (;;) {
     if (protocoloSeleccionado == PROTOCOL_TCP) {
       if (!wifiConnected) {
@@ -355,12 +384,25 @@ void parseTCPResponse(String response) {
   String strAltitud = response.substring(index2 + 1, index3);
   String strLatitudFinal = response.substring(index3 + 1);
 
-  longitud = strLongitud.toFloat();
-  latitud = strLatitud.toFloat();
-  altitud = strAltitud.toFloat();
-  latitudObjetivo = strLatitudFinal.toFloat();
-  latitud_destino[2] = longitud;
-  longitud_destino[2] = latitud;
+  float newLon = strLongitud.toFloat();
+  float newLat = strLatitud.toFloat();
+  float newAlt = strAltitud.toFloat();
+  float newLatObj = strLatitudFinal.toFloat();
+
+  if (!isnan(newLon) && newLon != 0) {
+    longitud = newLon;
+    latitud_destino[2] = longitud;
+  }
+  if (!isnan(newLat) && newLat != 0) {
+    latitud = newLat;
+    longitud_destino[2] = latitud;
+  }
+  if (!isnan(newAlt) && newAlt != 0) {
+    altitud = newAlt;
+  }
+  if (!isnan(newLatObj) && newLatObj != 0) {
+    latitudObjetivo = newLatObj;
+  }
 }
 
 float i2cRead(uint8_t address) {
@@ -408,15 +450,28 @@ void escribirMenu(double lantitud_act, double longuitud_act,
   lcdSetCursor(0, 3);
   lcdPrint("O:" + String(lonDistance, 0));
   lcdSetCursor(16, 3);
-  lcdPrint("P:" + String(modo));
+  switch (modo) {
+    case 1:
+      lcdPrint("I2C");
+      break;
+    case 2:
+      lcdPrint("TCP");
+      break;
+    case 3:
+      lcdPrint("BLE");
+      break;
+    default:
+      lcdPrint("N/A");
+      break;
+  }
 
   lcdSetCursor(11, 3);
-  lcdPrint("F:" + String(modo2));
+  lcdPrint("P:" + String(modo2));
 
   // DISTANCIA TOTAL, SATELITES
-  lcdSetCursor(8, 2);
-  lcdPrint("MG:" + String(totalDistance, 0));
-  lcdSetCursor(16, 2);
+  // lcdSetCursor(8, 2);
+  // lcdPrint("MG:" + String(totalDistance, 0));
+  lcdSetCursor(12, 2);
   lcdPrint("S:" + String(Sat));
 }
 
@@ -476,7 +531,7 @@ void processGPRMC(String nmea) {
     float speed = fields[7].toFloat();
     String date = fields[9];
   } else {
-    Serial.println("Data is invalid");
+    // Serial.println("Data is invalid");
   }
 }
 
